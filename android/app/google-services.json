@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "765667595623",
+    "project_id": "foodresume-d6c84",
+    "storage_bucket": "foodresume-d6c84.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:765667595623:android:d944c263c0aa4c88ae8bc2",
+        "android_client_info": {
+          "package_name": "com.example.food_resume_app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyB8j8D-hneJShRLtGb95XKVZDjGBESlUTs"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

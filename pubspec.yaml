@@ -1,0 +1,47 @@
+name: food_resume_app
+description: "แอปเรซูเม่อาหาร - อวดเมนู กด Like บันทึกเมนูโปรด"
+publish_to: 'none'
+version: 1.0.1+2
+
+environment:
+  sdk: '>=3.0.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  cupertino_icons: ^1.0.6
+
+  # Firebase (ฐานข้อมูล + ระบบยืนยันตัวตนแบบไม่ระบุตัวตน)
+  firebase_core: ^2.32.0
+  cloud_firestore: ^4.17.5
+  firebase_auth: ^4.20.0
+  firebase_storage: ^11.7.7
+
+  # เรียก API ภายนอก (TheMealDB) เพื่อดึงไอเดียเมนู/รูปภาพตัวอย่าง
+  http: ^1.2.2
+
+  # เลือกรูปจากเครื่อง / ถ่ายภาพ
+  image_picker: ^1.1.2
+
+  # Layout แบบ Pinterest/Masonry (เทคนิคใหม่ที่ไม่ได้สอนในห้องเรียน)
+  flutter_staggered_grid_view: ^0.7.0
+
+  # เก็บ cache ข้อมูลไว้ในเครื่อง เพื่อให้เปิดแอปได้แม้ไม่มีเน็ต (เทคนิคใหม่)
+  shared_preferences: ^2.3.2
+
+  # Animation ปุ่ม Like ให้ดูมีชีวิตชีวา (เทคนิคใหม่)
+  lottie: ^3.1.2
+
+  # debounce การพิมพ์ค้นหา
+  rxdart: ^0.27.7
+
+  # แปลงวันที่ให้อ่านง่าย
+  intl: ^0.19.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^4.0.0
+
+flutter:
+  uses-material-design: true
