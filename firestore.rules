@@ -1,0 +1,35 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() { return request.auth != null; }
+
+    match /food_resumes/{id} {
+      allow read: if signedIn();
+      allow create: if signedIn()
+        && request.resource.data.ownerId == request.auth.uid
+        && request.resource.data.likeCount == 0
+        && request.resource.data.likedBy == [];
+      allow update: if signedIn()
+        && resource.data.ownerId == request.auth.uid
+        && !request.resource.data.diff(resource.data).affectedKeys()
+          .hasAny(['ownerId', 'likeCount', 'likedBy']);
+      allow delete: if signedIn();
+
+      match /food_likes/{uid} {
+        allow create, update: if signedIn() && request.auth.uid == uid
+          && exists(/databases/$(database)/documents/food_resumes/$(id))
+          && request.resource.data.keys().hasOnly(['active'])
+          && request.resource.data.active is bool;
+      }
+    }
+
+    // Required for the collectionGroup query that supplies live feed counts.
+    match /{path=**}/food_likes/{uid} {
+      allow read: if signedIn();
+    }
+
+    match /users/{uid}/saved/{id} {
+      allow read, write: if signedIn() && request.auth.uid == uid;
+    }
+  }
+}

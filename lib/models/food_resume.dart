@@ -42,13 +42,13 @@ class FoodResume {
     required this.id,
     required this.menuName,
     required this.category,
-    required this.description,
-    required this.imageUrl,
-    required this.highlights,
+    this.description = '',
+    this.imageUrl = '',
+    this.highlights = const [],
     this.ingredients = const [],
     this.instructions = const [],
     required this.ownerId,
-    required this.ownerName,
+    this.ownerName = 'ไม่ระบุชื่อ',
     required this.likeCount,
     required this.likedBy,
     required this.createdAt,
@@ -93,4 +93,31 @@ class FoodResume {
   }
 
   bool isLikedBy(String uid) => likedBy.contains(uid);
+
+  /// New votes override legacy likedBy without migrating existing menus.
+  FoodResume withLikes(Map<String, bool> votes) {
+    final users = likedBy.toSet();
+    for (final vote in votes.entries) {
+      if (vote.value) {
+        users.add(vote.key);
+      } else {
+        users.remove(vote.key);
+      }
+    }
+    return FoodResume(
+      id: id,
+      menuName: menuName,
+      category: category,
+      description: description,
+      imageUrl: imageUrl,
+      highlights: highlights,
+      ingredients: ingredients,
+      instructions: instructions,
+      ownerId: ownerId,
+      ownerName: ownerName,
+      likeCount: (likeCount + users.length - likedBy.toSet().length).clamp(0, 1 << 30),
+      likedBy: users.toList(),
+      createdAt: createdAt,
+    );
+  }
 }

@@ -19,6 +19,8 @@ class ProfileScreen extends StatefulWidget {
 
 class _ProfileScreenState extends State<ProfileScreen> {
   final _firestore = FirestoreService();
+  late final _savedIdsStream = _firestore.streamSavedIds();
+  late final _resumesStream = _firestore.streamResumes();
 
   String _formatUid(String uid) {
     if (uid.length <= 10) return uid;
@@ -36,8 +38,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
         scrolledUnderElevation: 0,
       ),
       body: StreamBuilder<List<String>>(
-        stream: _firestore.streamSavedIds(),
+        stream: _savedIdsStream,
         builder: (context, savedSnap) {
+          if (savedSnap.hasError) {
+            return const Center(child: Text('โหลดเมนูที่บันทึกไว้ไม่สำเร็จ'));
+          }
           if (!savedSnap.hasData && savedSnap.connectionState == ConnectionState.waiting) {
             return const Center(
               child: CircularProgressIndicator(color: AppColors.primary),
@@ -46,9 +51,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
           final savedIds = savedSnap.data ?? [];
 
-          return FutureBuilder<List<FoodResume>>(
-            key: ValueKey('saved_${savedIds.join('_')}'),
-            future: _firestore.getSavedResumes(),
+          return StreamBuilder<List<FoodResume>>(
+            stream: _resumesStream,
             builder: (context, snap) {
               if (snap.hasError) {
                 return Center(
@@ -89,7 +93,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 );
               }
 
-              final saved = snap.data ?? [];
+              final byId = {for (final resume in snap.data ?? <FoodResume>[]) resume.id: resume};
+              final saved = savedIds.map((id) => byId[id]).whereType<FoodResume>().toList();
 
               return Center(
                 child: ConstrainedBox(

@@ -14,7 +14,6 @@
 
 | ข้อกำหนด | สิ่งที่ทำ |
 |---|---|
-| หน้าแสดงข้อมูลสมาชิกกลุ่ม | `lib/screens/member_screen.dart` (แก้ชื่อสมาชิกได้ในไฟล์นี้) |
 | ใช้ฐานข้อมูล CRUD | Firebase Firestore — เพิ่ม/แก้ไข/ลบเรซูเม่อาหาร ระบบ Like/Save |
 | เรียกใช้ API ภายนอก | [TheMealDB](https://www.themealdb.com/api.php) — สุ่ม/ค้นหาไอเดียเมนูตอนเพิ่มข้อมูล |
 | เทคนิคใหม่ที่ไม่ได้สอนในห้อง | Offline-first caching ด้วย `shared_preferences`, Masonry/Staggered Grid layout, Firestore Transaction กันข้อมูลชนตอนกด Like พร้อมกัน, Debounced search |
@@ -33,9 +32,8 @@ lib/
   screens/
     home_screen.dart             หน้าแรก: ค้นหา/กรอง/กริดเรียงตามยอดไลก์
     add_menu_screen.dart         ฟอร์มเพิ่มเมนูใหม่ + สุ่มไอเดียจาก API
-    detail_screen.dart           รายละเอียดเรซูเม่อาหาร + ลบ (เจ้าของเท่านั้น)
+    detail_screen.dart           รายละเอียดเรซูเม่อาหาร + ลบ (ผู้ใช้ที่ล็อกอินทุกคน)
     profile_screen.dart          รายการที่บันทึกไว้
-    member_screen.dart           ข้อมูลสมาชิกกลุ่ม
   widgets/resume_card.dart       การ์ดเรซูเม่อาหาร (ใช้ซ้ำหลายหน้า)
   firebase_options.dart          ⚠️ ต้องสร้างใหม่ด้วย flutterfire configure
   main.dart
@@ -60,40 +58,37 @@ lib/
    - **Firestore Database** → สร้างฐานข้อมูล (โหมด production หรือ test)
    - **Storage** → เปิดใช้งาน (สำหรับเก็บรูปเมนูที่ผู้ใช้ถ่าย/เลือกเอง)
 
-### กฎความปลอดภัย (Firestore Rules) ตัวอย่างสำหรับใช้ตอนทำโปรเจกต์/เดโม
+### กฎความปลอดภัยและโครงสร้างข้อมูล
 
-```
-rules_version = '2';
-service cloud.firestore {
-  match /databases/{database}/documents {
-    match /food_resumes/{id} {
-      allow read: if true;
-      allow create: if request.auth != null;
-      allow update, delete: if request.auth != null &&
-        (request.auth.uid == resource.data.ownerId ||
-         request.resource.data.diff(resource.data).affectedKeys()
-           .hasOnly(['likeCount', 'likedBy']));
-    }
-    match /users/{uid}/saved/{id} {
-      allow read, write: if request.auth != null && request.auth.uid == uid;
-    }
-  }
-}
+- เมนูยังอยู่ที่ `food_resumes/{id}` และใช้ `ownerId` ตามเดิม ไม่มี Admin/สิทธิ์ตาม role
+- Feed, Category และ Search อ่านเมนูทั้งหมด ไม่มี filter ตาม UID
+- Login เดิมเป็น Anonymous Authentication ไม่มีหน้า Login/Register แบบอีเมลใน repository นี้
+- Saved ยังอยู่ที่ `users/{uid}/saved/{id}` และอ่าน/เขียนได้เฉพาะผู้ใช้คนนั้น
+- ใช้ `firestore.rules` เป็นกฎจริง: อ่านและลบเมนูได้เมื่อล็อกอิน, สร้างในชื่อของตัวเอง, แก้ไขเมนูเฉพาะเจ้าของ และเปลี่ยนเจ้าของไม่ได้
+- เพื่อให้คนอื่น Like ได้โดยไม่ต้องอนุญาต update document เมนู เพิ่ม `food_resumes/{id}/food_likes/{uid}` เก็บ `{active: true/false}` แต่ละคนเขียนได้เฉพาะ vote ของตนเอง
+- แอปรวม vote ใหม่กับ `likedBy`/`likeCount` เดิมใน model ก่อนแสดงผลและเรียง Feed ไม่ต้อง migrate เมนูหรือ Like เดิม ค่าใน document หลักเป็นฐานเดิมและจะไม่เพิ่มตาม vote ใหม่
+- ใช้ collectionGroup `food_likes` แบบไม่มี filter/orderBy จึงไม่ต้องสร้าง composite index และใช้ RxDart ที่มีอยู่แล้ว
+- Profile รับเมนูแบบ realtime แล้วเลือกเฉพาะ Saved ของผู้ใช้ ทำให้เมนูที่ถูกลบหายทันที
+- เมื่อลบเมนู แอปพยายามลบรูปจาก `imageUrl` เฉพาะ bucket เดิมและ path `food_images/` ถ้าลบรูปไม่สำเร็จยังถือว่าลบเมนูสำเร็จ
+- Firestore ไม่ลบ subcollection ตาม document แม่: vote และ Saved reference เก่าอาจยังอยู่ แต่แอปไม่แสดงรายการที่ไม่มีเมนูแล้ว
+
+### ขั้นตอนใน Firebase Console
+
+1. เปิด project `foodresume-d6c84` → Authentication → Sign-in method → เปิด Anonymous ตามระบบ Login เดิม
+2. เปิด Firestore Database → Rules → นำเนื้อหา `firestore.rules` ทั้งไฟล์ไปแทนกฎเดิม → Publish
+3. เปิด Storage → Rules → นำเนื้อหา `storage.rules` ทั้งไฟล์ไปแทนกฎเดิม → Publish
+4. รูปที่อัปโหลดผ่าน service หลังแก้จะมี custom metadata `ownerId` สำหรับตรวจสิทธิ์ลบ รูปเก่าที่ไม่มี metadata นี้อาจลบอัตโนมัติไม่ได้ ให้ตรวจ `imageUrl` และ `ownerId` ของเมนูเพื่อระบุรูป แล้วลบรูปเก่าที่ค้างใน Storage Console เองเมื่อจำเป็น อย่าเปิดสิทธิ์ลบรูปให้ทุกคน
+5. ทดสอบด้วยผู้ใช้สอง UID: ทั้งสองเห็นเมนูเดียวกัน, Like/Save แยกกัน, ทั้งสองเห็นปุ่มลบใน Detail, ยกเลิกไม่ลบ, ยืนยันแล้วกลับ Home และเมนูหายจากรายการ รูปจะถูกลบด้วยเมื่อ Storage Rules อนุญาต
+
+หรือใช้ Firebase CLI ที่ล็อกอินแล้ว:
+
+```bash
+firebase deploy --only firestore:rules,storage --project foodresume-d6c84
 ```
 
-### Storage Rules ตัวอย่าง
+ไฟล์ `firebase.json` ผูก rules ให้แล้ว แต่การแก้ไฟล์ในเครื่องยังไม่เปลี่ยนกฎบน Firebase จนกว่าจะ Publish/deploy
 
-```
-rules_version = '2';
-service firebase.storage {
-  match /b/{bucket}/o {
-    match /food_images/{fileName} {
-      allow read: if true;
-      allow write: if request.auth != null;
-    }
-  }
-}
-```
+อ้างอิง: [Firestore field rules](https://firebase.google.com/docs/firestore/security/rules-fields), [Storage conditions](https://firebase.google.com/docs/storage/security/rules-conditions), [Flutter Storage deletion](https://firebase.google.com/docs/storage/flutter/delete-files)
 
 ## วิธีรันแอป
 
@@ -104,11 +99,10 @@ flutter run            # รันบนอุปกรณ์จริงหร�
 
 ## สิ่งที่ต้องแก้ก่อนส่งงานจริง
 
-1. `lib/screens/member_screen.dart` — ใส่ชื่อจริง/รหัสนิสิต/บทบาทของสมาชิกในกลุ่ม
-2. รัน `flutterfire configure` เพื่อแทนที่ `lib/firebase_options.dart` ด้วยค่าจริง
-3. (ถ้าต้องการ) เพิ่มฟอนต์ `Kanit` ลงโฟลเดอร์ `assets/fonts` และประกาศใน `pubspec.yaml` หากต้องการใช้ฟอนต์ไทยที่สวยขึ้น มิฉะนั้นให้ลบบรรทัด `fontFamily: 'Kanit'` ออกจาก `main.dart`
-4. Android: ต้องมี `android/app/google-services.json` (สร้างอัตโนมัติจาก `flutterfire configure`)
-5. iOS: ต้องมี `ios/Runner/GoogleService-Info.plist` (สร้างอัตโนมัติจาก `flutterfire configure`)
+1. รัน `flutterfire configure` เพื่อแทนที่ `lib/firebase_options.dart` ด้วยค่าจริง
+2. (ถ้าต้องการ) เพิ่มฟอนต์ `Kanit` ลงโฟลเดอร์ `assets/fonts` และประกาศใน `pubspec.yaml` หากต้องการใช้ฟอนต์ไทยที่สวยขึ้น มิฉะนั้นให้ลบบรรทัด `fontFamily: 'Kanit'` ออกจาก `main.dart`
+3. Android: ต้องมี `android/app/google-services.json` (สร้างอัตโนมัติจาก `flutterfire configure`)
+4. iOS: ต้องมี `ios/Runner/GoogleService-Info.plist` (สร้างอัตโนมัติจาก `flutterfire configure`)
 
 ## หมายเหตุเรื่อง API ภายนอก
 

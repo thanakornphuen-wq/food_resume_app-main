@@ -1,7 +1,8 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_storage/firebase_storage.dart';
-import 'dart:typed_data';
+import 'package:flutter/foundation.dart';
+import 'package:rxdart/rxdart.dart';
 import '../models/food_resume.dart';
 
 /// รวมทุกการติดต่อกับฐานข้อมูล Firebase (Firestore + Storage + Auth)
@@ -24,6 +25,8 @@ class FirestoreService {
 
   /// อัปโหลดจาก bytes จึงใช้ได้ทั้ง Flutter Web, Android และ iOS
   Future<String> uploadImageBytes(Uint8List bytes, String fileName) async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) throw StateError('กรุณาเข้าสู่ระบบก่อนอัปโหลดรูป');
     final ref = _storage.ref().child('food_images/$fileName');
     final extension = fileName.split('.').last.toLowerCase();
     final contentType = switch (extension) {
@@ -34,7 +37,10 @@ class FirestoreService {
     };
     final task = await ref.putData(
       bytes,
-      SettableMetadata(contentType: contentType),
+      SettableMetadata(
+        contentType: contentType,
+        customMetadata: {'ownerId': user.uid},
+      ),
     );
     return task.ref.getDownloadURL();
   }
@@ -43,8 +49,19 @@ class FirestoreService {
   Stream<List<FoodResume>> streamResumes({String? category, String? search}) {
     // กรองและเรียงฝั่งแอป เพื่อไม่บังคับให้ผู้ใช้สร้าง Firestore composite index
     // และทำให้การเปลี่ยนหมวดหมู่แสดงผลได้ทันที
-    return _resumes.snapshots().map((snap) {
-      var list = snap.docs.map((d) => FoodResume.fromDoc(d)).toList();
+    return Rx.combineLatest2(
+      _resumes.snapshots(),
+      _db.collectionGroup('food_likes').snapshots(),
+      (QuerySnapshot<Map<String, dynamic>> snap,
+          QuerySnapshot<Map<String, dynamic>> likes) {
+      final byMenu = <String, Map<String, bool>>{};
+      for (final like in likes.docs) {
+        final parent = like.reference.parent.parent;
+        if (parent?.parent.path != 'food_resumes') continue;
+        byMenu.putIfAbsent(parent!.id, () => {})[like.id] = like.data()['active'] == true;
+      }
+      var list = snap.docs.map((d) => FoodResume.fromDoc(d)
+          .withLikes(byMenu[d.id] ?? {})).toList();
       if (category != null && category.isNotEmpty && category != 'ทั้งหมด') {
         list = list.where((r) => r.category == category).toList();
       }
@@ -58,17 +75,23 @@ class FirestoreService {
   }
 
   Future<FoodResume> getResume(String id) async {
-    final doc = await _resumes.doc(id).get();
-    if (!doc.exists) {
+    final resume = await streamResume(id).first;
+    if (resume == null) {
       throw StateError('ไม่พบสูตรอาหารนี้ หรือสูตรอาหารถูกลบแล้ว');
     }
-    return FoodResume.fromDoc(doc);
+    return resume;
   }
 
   Stream<FoodResume?> streamResume(String id) {
-    return _resumes.doc(id).snapshots().map((doc) {
+    return Rx.combineLatest2(
+      _resumes.doc(id).snapshots(),
+      _resumes.doc(id).collection('food_likes').snapshots(),
+      (DocumentSnapshot<Map<String, dynamic>> doc,
+          QuerySnapshot<Map<String, dynamic>> likes) {
       if (!doc.exists) return null;
-      return FoodResume.fromDoc(doc);
+      return FoodResume.fromDoc(doc).withLikes({
+        for (final like in likes.docs) like.id: like.data()['active'] == true,
+      });
     });
   }
 
@@ -79,31 +102,55 @@ class FirestoreService {
 
   /// กด/ยกเลิก Like — ใช้ Transaction ป้องกันข้อมูลชนกันเวลามีคนกดพร้อมกัน
   Future<void> toggleLike(String resumeId) async {
-    final uid = currentUid;
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) throw StateError('กรุณาเข้าสู่ระบบก่อนกดถูกใจ');
     final docRef = _resumes.doc(resumeId);
+    final likeRef = docRef.collection('food_likes').doc(uid);
 
     await _db.runTransaction((tx) async {
       final snap = await tx.get(docRef);
+      final like = await tx.get(likeRef);
       final data = snap.data();
       if (data == null) return;
       final likedBy = List<String>.from(data['likedBy'] ?? []);
-      int likeCount = data['likeCount'] ?? 0;
-
-      if (likedBy.contains(uid)) {
-        likedBy.remove(uid);
-        likeCount = (likeCount - 1).clamp(0, 1 << 30);
-      } else {
-        likedBy.add(uid);
-        likeCount += 1;
-      }
-
-      tx.update(docRef, {'likedBy': likedBy, 'likeCount': likeCount});
+      final active = like.data()?['active'] as bool? ?? likedBy.contains(uid);
+      tx.set(likeRef, {'active': !active});
     });
   }
 
   // ---------- DELETE ----------
   Future<void> deleteResume(String id) async {
-    await _resumes.doc(id).delete();
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) throw StateError('กรุณาเข้าสู่ระบบก่อนลบเมนู');
+    final ref = _resumes.doc(id);
+    final imageUrl = await _db.runTransaction<String>((tx) async {
+      final snapshot = await tx.get(ref);
+      final data = snapshot.data();
+      if (data == null) throw StateError('ไม่พบเมนูนี้');
+      tx.delete(ref);
+      return data['imageUrl'] as String? ?? '';
+    });
+
+    // The document is already deleted. Image cleanup is best effort, and must
+    // never turn a successful menu deletion into an error in the UI.
+    if (imageUrl.isEmpty) return;
+    try {
+      final uri = Uri.tryParse(imageUrl);
+      if (uri == null ||
+          !(uri.scheme == 'gs' ||
+              (uri.scheme == 'https' &&
+                  uri.host == 'firebasestorage.googleapis.com'))) {
+        return; // External images (for example TheMealDB) are not ours to delete.
+      }
+      final imageRef = _storage.refFromURL(imageUrl);
+      if (imageRef.bucket != _storage.ref().bucket ||
+          !imageRef.fullPath.startsWith('food_images/')) {
+        return;
+      }
+      await imageRef.delete();
+    } catch (error) {
+      debugPrint('Menu deleted; image cleanup failed: $error');
+    }
   }
 
   // ---------- SAVE / BOOKMARK (เก็บไว้ในโปรไฟล์) ----------
@@ -122,7 +169,7 @@ class FirestoreService {
   }
 
   Stream<List<String>> streamSavedIds() {
-    return _savedRef(currentUid).snapshots().map(
+    return _savedRef(currentUid).orderBy('savedAt', descending: true).snapshots().map(
           (snap) => snap.docs.map((d) => d.id).toList(),
         );
   }
@@ -134,16 +181,8 @@ class FirestoreService {
     final ids = savedSnap.docs.map((d) => d.id).toList();
     if (ids.isEmpty) return [];
 
-    final results = <FoodResume>[];
-    // Firestore whereIn รองรับสูงสุด 30 รายการต่อครั้ง
-    for (var i = 0; i < ids.length; i += 30) {
-      final chunk = ids.sublist(i, i + 30 > ids.length ? ids.length : i + 30);
-      final snap = await _resumes
-          .where(FieldPath.documentId, whereIn: chunk)
-          .get();
-      results.addAll(snap.docs.map((d) => FoodResume.fromDoc(d)));
-    }
-    // เรียงตามลำดับที่ผู้ใช้บันทึกล่าสุด แม้ Firestore whereIn จะคืนค่าไม่เรียง
+    final results = await streamResumes().first;
+    // Preserve saved order while including live and legacy likes.
     final byId = {for (final resume in results) resume.id: resume};
     return ids.map((id) => byId[id]).whereType<FoodResume>().toList();
   }
