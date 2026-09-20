@@ -4,6 +4,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:intl/date_symbol_data_local.dart';
 import 'firebase_options.dart';
 import 'screens/home_screen.dart';
+import 'theme/app_theme.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -29,12 +30,7 @@ class FoodResumeApp extends StatelessWidget {
     return MaterialApp(
       title: 'Food Resume',
       debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        colorSchemeSeed: const Color(0xFFFF7A45),
-        useMaterial3: true,
-        fontFamily: 'Kanit',
-        appBarTheme: const AppBarTheme(centerTitle: true, elevation: 0),
-      ),
+      theme: AppTheme.lightTheme,
       // Responsive: MediaQuery + LayoutBuilder ถูกใช้ในแต่ละหน้าเพื่อรองรับ
       // ทั้งจอมือถือแนวตั้ง/แนวนอน และแท็บเล็ต (ดูรายละเอียดใน home_screen.dart)
       home: const HomeScreen(),

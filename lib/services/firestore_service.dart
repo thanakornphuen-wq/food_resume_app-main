@@ -65,6 +65,13 @@ class FirestoreService {
     return FoodResume.fromDoc(doc);
   }
 
+  Stream<FoodResume?> streamResume(String id) {
+    return _resumes.doc(id).snapshots().map((doc) {
+      if (!doc.exists) return null;
+      return FoodResume.fromDoc(doc);
+    });
+  }
+
   // ---------- UPDATE ----------
   Future<void> updateResume(String id, Map<String, dynamic> data) async {
     await _resumes.doc(id).update(data);
