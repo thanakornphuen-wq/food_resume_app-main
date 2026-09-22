@@ -1,7 +1,7 @@
 name: food_resume_app
 description: "แอปเรซูเม่อาหาร - อวดเมนู กด Like บันทึกเมนูโปรด"
 publish_to: 'none'
-version: 1.0.1+2
+version: 1.0.0+1
 
 environment:
   sdk: '>=3.0.0 <4.0.0'
@@ -10,6 +10,7 @@ dependencies:
   flutter:
     sdk: flutter
   cupertino_icons: ^1.0.6
+  google_fonts: ^6.3.3
 
   # Firebase (ฐานข้อมูล + ระบบยืนยันตัวตนแบบไม่ระบุตัวตน)
   firebase_core: ^2.32.0
@@ -37,7 +38,6 @@ dependencies:
 
   # แปลงวันที่ให้อ่านง่าย
   intl: ^0.19.0
-  google_fonts: ^8.2.1
 
 dev_dependencies:
   flutter_test:

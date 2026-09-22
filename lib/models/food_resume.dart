@@ -13,9 +13,12 @@ enum FoodCategory {
   final String label;
   const FoodCategory(this.label);
 
+  static String normalize(String label) =>
+      label.replaceAll(RegExp(r'[\u200B\uFEFF]'), '').trim();
+
   static FoodCategory fromLabel(String label) {
     return FoodCategory.values.firstWhere(
-      (e) => e.label == label,
+      (e) => e.label == normalize(label),
       orElse: () => FoodCategory.other,
     );
   }
@@ -29,9 +32,8 @@ class FoodResume {
   final String category;
   final String description;
   final String imageUrl;
-  final List<String> highlights; // จุดเด่นของเมนู เช่น "รสจัดจ้าน", "เผ็ดระดับ 5"
-  final List<String> ingredients;
-  final List<String> instructions;
+  final List<String>
+      highlights; // จุดเด่นของเมนู เช่น "รสจัดจ้าน", "เผ็ดระดับ 5"
   final String ownerId;
   final String ownerName;
   final int likeCount;
@@ -41,18 +43,16 @@ class FoodResume {
   FoodResume({
     required this.id,
     required this.menuName,
-    required this.category,
-    this.description = '',
+    required String category,
+    required this.description,
     this.imageUrl = '',
     this.highlights = const [],
-    this.ingredients = const [],
-    this.instructions = const [],
     required this.ownerId,
-    this.ownerName = 'ไม่ระบุชื่อ',
+    required this.ownerName,
     required this.likeCount,
     required this.likedBy,
     required this.createdAt,
-  });
+  }) : category = FoodCategory.normalize(category);
 
   factory FoodResume.fromDoc(DocumentSnapshot<Map<String, dynamic>> doc) {
     final data = doc.data()!;
@@ -63,8 +63,6 @@ class FoodResume {
       description: data['description'] ?? '',
       imageUrl: data['imageUrl'] ?? '',
       highlights: List<String>.from(data['highlights'] ?? []),
-      ingredients: List<String>.from(data['ingredients'] ?? []),
-      instructions: List<String>.from(data['instructions'] ?? []),
       ownerId: data['ownerId'] ?? '',
       ownerName: data['ownerName'] ?? 'ไม่ระบุชื่อ',
       likeCount: data['likeCount'] ?? 0,
@@ -81,9 +79,7 @@ class FoodResume {
       'category': category,
       'description': description,
       'imageUrl': imageUrl,
-      'highlights': highlights,
-      'ingredients': ingredients,
-      'instructions': instructions,
+      if (highlights.isNotEmpty) 'highlights': highlights,
       'ownerId': ownerId,
       'ownerName': ownerName,
       'likeCount': likeCount,
@@ -93,31 +89,4 @@ class FoodResume {
   }
 
   bool isLikedBy(String uid) => likedBy.contains(uid);
-
-  /// New votes override legacy likedBy without migrating existing menus.
-  FoodResume withLikes(Map<String, bool> votes) {
-    final users = likedBy.toSet();
-    for (final vote in votes.entries) {
-      if (vote.value) {
-        users.add(vote.key);
-      } else {
-        users.remove(vote.key);
-      }
-    }
-    return FoodResume(
-      id: id,
-      menuName: menuName,
-      category: category,
-      description: description,
-      imageUrl: imageUrl,
-      highlights: highlights,
-      ingredients: ingredients,
-      instructions: instructions,
-      ownerId: ownerId,
-      ownerName: ownerName,
-      likeCount: (likeCount + users.length - likedBy.toSet().length).clamp(0, 1 << 30),
-      likedBy: users.toList(),
-      createdAt: createdAt,
-    );
-  }
 }
