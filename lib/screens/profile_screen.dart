@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_staggered_grid_view/flutter_staggered_grid_view.dart';
 import '../models/food_resume.dart';
 import '../services/firestore_service.dart';
 import '../widgets/resume_card.dart';
@@ -39,14 +40,12 @@ class ProfileScreen extends StatelessWidget {
                       return const Center(child: CircularProgressIndicator());
                     }
                     final saved = snap.data!;
-                    return GridView.builder(
+                    return MasonryGridView.extent(
                       padding: const EdgeInsets.all(12),
-                      gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-                        maxCrossAxisExtent: 200,
-                        mainAxisSpacing: 12,
-                        crossAxisSpacing: 12,
-                        childAspectRatio: 0.72,
-                      ),
+                      maxCrossAxisExtent:
+                          200 * MediaQuery.textScalerOf(context).scale(14) / 14,
+                      mainAxisSpacing: 12,
+                      crossAxisSpacing: 12,
                       itemCount: saved.length,
                       itemBuilder: (context, i) {
                         final r = saved[i];
